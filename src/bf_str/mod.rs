@@ -1,6 +1,8 @@
 use std::{
     collections::HashMap,
-    io::{self, Write},
+    fs::File,
+    io::{self, Read, Write},
+    path::PathBuf,
     sync::LazyLock,
 };
 
@@ -107,6 +109,13 @@ impl From<&str> for BfStr {
 }
 
 impl BfStr {
+    pub fn from_file(path: &PathBuf) -> io::Result<Self> {
+        let mut file = File::open(path)?;
+        let mut source = String::new();
+        file.read_to_string(&mut source)?;
+        Ok(BfStr::from(source.as_str()))
+    }
+
     pub fn interpret(&self) {
         let mut tape: Vec<u8> = vec![0; 1024000];
         let mut prt: usize = 0;
@@ -181,5 +190,158 @@ impl BfStr {
                 }
             }
         }
+    }
+}
+
+static FILE_HEAD: &str = concat!(
+    "#include <assert.h>\n",
+    "#include <stdbool.h>\n",
+    "#include <inttypes.h>\n",
+    "#include <stdint.h>\n",
+    "#include <stdio.h>\n",
+    "#include <stdlib.h>\n",
+    "\n",
+    "#define CAP 1024\n",
+    "\n",
+    "#define da_append(da, item)                                                         \\\n",
+    "    do {                                                                            \\\n",
+    "        if ((da)->len >= (da)->cap) {                                               \\\n",
+    "            (da)->cap = ((da)->cap == 0) ? CAP : (da)->cap * 2;                     \\\n",
+    "            (da)->items = realloc((da)->items, sizeof(*(da)->items) * (da)->cap);   \\\n",
+    "            assert((da)->items != NULL && \"OOM!\");                                  \\\n",
+    "        }                                                                           \\\n",
+    "        (da)->items[(da)->len++] = (item);                                          \\\n",
+    "    } while (0)                                                                     \\\n",
+    "\n",
+    "typedef struct {\n",
+    "    uint8_t* items;\n",
+    "    size_t len;\n",
+    "    size_t cap;\n",
+    "    size_t ptr;\n",
+    "} Tape;\n",
+    "\n",
+    "typedef struct {\n",
+    "    char* items;\n",
+    "    size_t len;\n",
+    "    size_t cap;\n",
+    "} InputBuf;\n",
+    "\n",
+    "uint8_t tape_curr(Tape* tape) {\n",
+    "    return tape->items[tape->ptr];\n",
+    "}\n",
+    "\n",
+    "void tape_asign(Tape* tape, uint8_t u8) {\n",
+    "    tape->items[tape->ptr] = u8;\n",
+    "}\n",
+    "\n",
+    "void tape_shift(Tape* tape, int64_t delta) {\n",
+    "    int64_t ret = (int64_t)tape->ptr + delta;\n",
+    "    if (ret < 0) assert(0 && \"Tape Underflow!\");\n",
+    "    if ((size_t)ret >= tape->len) {\n",
+    "        printf(\"WARN: Possible Tape Overflow!\\n\");\n",
+    "        printf(\"WARN: Current tape pointer: %zu\\n\", tape->ptr);\n",
+    "    }\n",
+    "    while ((size_t)ret >= tape->len) {\n",
+    "        da_append(tape, 0);\n",
+    "    }\n",
+    "    tape->ptr = (size_t)ret;\n",
+    "}\n",
+    "\n",
+    "void tape_update(Tape* tape, int64_t delta) {\n",
+    "    tape->items[tape->ptr] += delta;\n",
+    "}\n",
+    "\n",
+    "#define tape_jpf(tape, dst) if (tape_curr(tape) == 0) goto dst\n",
+    "#define tape_jpb(tape, dst) if (tape_curr(tape) != 0) goto dst\n",
+    "\n",
+    "void tape_in(Tape* tape) {\n",
+    "    printf(\"Please input a number (0-255) or a ascii char: \");\n",
+    "    InputBuf buf = { 0 };\n",
+    "    char* endptr;\n",
+    "    uint8_t ret;\n",
+    "    while (true) {\n",
+    "        char c = fgetc(stdin);\n",
+    "        if (c == EOF || c == '\\n') break;\n",
+    "        da_append(&buf, c);\n",
+    "    }\n",
+    "    da_append(&buf, '\\0');\n",
+    "    if (buf.items[0] == '\\0') assert(0 && \"Invalid input: Empty String!\");\n",
+    "    uint8_t num = strtol(buf.items, &endptr, 10);\n",
+    "    if (buf.items == endptr) tape_asign(tape, (uint8_t)buf.items[0]);\n",
+    "    else tape_asign(tape, num);\n",
+    "    free(buf.items);\n",
+    "}\n",
+    "\n",
+    "void tape_out(Tape* tape, size_t step) {\n",
+    "    for (size_t i = 0; i < step; ++i) {\n",
+    "        printf(\"%c\", tape_curr(tape));\n",
+    "    }\n",
+    "}\n",
+    "\n",
+    "void tape_init(Tape* tape) {\n",
+    "    for (size_t i = 0; i < CAP; ++i) {\n",
+    "        da_append(tape, 0);\n",
+    "    }\n",
+    "}\n",
+    "\n"
+);
+
+static MAIN_HEAD: &str = concat!(
+    "int main(void) {\n",
+    "    Tape tape = { 0 };\n",
+    "    tape_init(&tape); \n",
+    "    \n"
+);
+
+static MAIN_TAIL: &str = concat!(
+    "    \n",
+    "    free(tape.items);\n",
+    "    return 0;\n",
+    "}\n"
+);
+
+impl BfStr {
+    pub fn cc(&self, save_path: &PathBuf) {
+        let mut file = File::create(save_path).unwrap();
+
+        let mut cmds: Vec<String> = Vec::new();
+        let mut goto_stack: Vec<(usize, &Operation)> = Vec::new();
+        for (idx, op) in self.ops.iter().enumerate() {
+            match op.operator {
+                Op::Inc => cmds.push(format!("    tape_update(&tape, {});\n", op.step)),
+                Op::Dec => cmds.push(format!("    tape_update(&tape, -{});\n", op.step)),
+                Op::Fwd => cmds.push(format!("    tape_shift(&tape, {});\n", op.step)),
+                Op::Bwd => cmds.push(format!("    tape_shift(&tape, -{});\n", op.step)),
+                Op::Acp => cmds.push(format!("    tape_in(&tape);\n")),
+                Op::Out => cmds.push(format!("    tape_out(&tape, {});\n", op.step)),
+                Op::Jpf => {
+                    cmds.push(String::new());
+                    goto_stack.push((idx, op));
+                }
+                Op::Jpb => match goto_stack.pop() {
+                    Some((goto_idx, goto_op)) => {
+                        cmds.push(format!(
+                            "    tape_jpb(&tape, jpb{});\n    jpf{}:\n",
+                            op.step, goto_op.step
+                        ));
+                        cmds[goto_idx].push_str(
+                            format!(
+                                "    tape_jpf(&tape, jpf{});\n    jpb{}:\n",
+                                goto_op.step, op.step
+                            )
+                            .as_str(),
+                        );
+                    }
+                    None => panic!("Unbalanced jump!"),
+                },
+            }
+        }
+
+        let _ = file.write(FILE_HEAD.as_bytes());
+        let _ = file.write(MAIN_HEAD.as_bytes());
+        for cmd in &cmds {
+            let _ = file.write(cmd.as_bytes());
+        }
+        let _ = file.write(MAIN_TAIL.as_bytes());
     }
 }
