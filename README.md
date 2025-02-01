@@ -37,6 +37,10 @@ cargo build --release
 
 # Changelogs
 
+2025-02-1
+  - change `,` behavior to official c implement
+  - fix spelling mistake: `asign` -> `assign`
+
 2025-01-29
   - change usage with subcommands
   - add `compile` subcommand to compile to c

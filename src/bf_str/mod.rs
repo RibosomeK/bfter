@@ -74,7 +74,7 @@ impl From<&str> for BfStr {
             match c {
                 '+' | '-' | ',' | '.' | '<' | '>' => {
                     let op = Operation {
-                        operator: OP_MAP.get(&c).unwrap().clone(),
+                        operator: OP_MAP[&c].clone(),
                         step: count_step(&chars[pos..], &c),
                     };
                     pos += op.step;
@@ -82,7 +82,7 @@ impl From<&str> for BfStr {
                 }
                 '[' => {
                     let op = Operation {
-                        operator: OP_MAP.get(&c).unwrap().clone(),
+                        operator: OP_MAP[&c].clone(),
                         step: 0,
                     };
                     pos += 1;
@@ -92,7 +92,7 @@ impl From<&str> for BfStr {
                 ']' => match jmp_stack.pop() {
                     Some(idx) => {
                         let op = Operation {
-                            operator: OP_MAP.get(&c).unwrap().clone(),
+                            operator: OP_MAP[&c].clone(),
                             step: idx + 1,
                         };
                         pos += 1;
@@ -168,23 +168,10 @@ impl BfStr {
                     pos += 1;
                 }
                 Op::Acp => {
-                    print!("Pleas input a number (0-255) or a ascii char: ");
-                    let _ = io::stdout().flush();
-                    let mut input = String::new();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .expect("Failed to read your input!");
-                    match input.trim().parse::<u8>() {
-                        Ok(num) => {
-                            tape[prt] = num;
-                        }
-                        Err(_) => match input.chars().next() {
-                            Some(c) => match c.is_ascii() {
-                                true => tape[prt] = c as u8,
-                                false => panic!("Invalid byte data: {}", c),
-                            },
-                            None => panic!("Failed to read your input"),
-                        },
+                    let mut buf = [0; 1];
+                    let _ = io::stdin().read_exact(&mut buf);
+                    if buf[0] != 0 {
+                        tape[prt] = buf[0];
                     }
                     pos += 1;
                 }
@@ -220,30 +207,18 @@ static FILE_HEAD: &str = concat!(
     "    size_t ptr;\n",
     "} Tape;\n",
     "\n",
-    "typedef struct {\n",
-    "    char* items;\n",
-    "    size_t len;\n",
-    "    size_t cap;\n",
-    "} InputBuf;\n",
-    "\n",
     "uint8_t tape_curr(Tape* tape) {\n",
     "    return tape->items[tape->ptr];\n",
     "}\n",
     "\n",
-    "void tape_asign(Tape* tape, uint8_t u8) {\n",
+    "void tape_assign(Tape* tape, uint8_t u8) {\n",
     "    tape->items[tape->ptr] = u8;\n",
     "}\n",
     "\n",
     "void tape_shift(Tape* tape, int64_t delta) {\n",
     "    int64_t ret = (int64_t)tape->ptr + delta;\n",
     "    if (ret < 0) assert(0 && \"Tape Underflow!\");\n",
-    "    if ((size_t)ret >= tape->len) {\n",
-    "        printf(\"WARN: Possible Tape Overflow!\\n\");\n",
-    "        printf(\"WARN: Current tape pointer: %zu\\n\", tape->ptr);\n",
-    "    }\n",
-    "    while ((size_t)ret >= tape->len) {\n",
-    "        da_append(tape, 0);\n",
-    "    }\n",
+    "    while ((size_t)ret >= tape->len) da_append(tape, 0);\n",
     "    tape->ptr = (size_t)ret;\n",
     "}\n",
     "\n",
@@ -255,21 +230,8 @@ static FILE_HEAD: &str = concat!(
     "#define tape_jpb(tape, dst) if (tape_curr(tape) != 0) goto dst\n",
     "\n",
     "void tape_in(Tape* tape) {\n",
-    "    printf(\"Please input a number (0-255) or a ascii char: \");\n",
-    "    InputBuf buf = { 0 };\n",
-    "    char* endptr;\n",
-    "    uint8_t ret;\n",
-    "    while (true) {\n",
-    "        char c = fgetc(stdin);\n",
-    "        if (c == EOF || c == '\\n') break;\n",
-    "        da_append(&buf, c);\n",
-    "    }\n",
-    "    da_append(&buf, '\\0');\n",
-    "    if (buf.items[0] == '\\0') assert(0 && \"Invalid input: Empty String!\");\n",
-    "    uint8_t num = strtol(buf.items, &endptr, 10);\n",
-    "    if (buf.items == endptr) tape_asign(tape, (uint8_t)buf.items[0]);\n",
-    "    else tape_asign(tape, num);\n",
-    "    free(buf.items);\n",
+    "    int c = fgetc(stdin);\n",
+    "    if (c != EOF) tape_assign(tape, c);\n",
     "}\n",
     "\n",
     "void tape_out(Tape* tape, size_t step) {\n",
