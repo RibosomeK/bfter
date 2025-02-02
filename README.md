@@ -22,6 +22,7 @@ Commands:
 
     Options:
       -o, --out <OUT>  [default: ./]
+      -O, --optimize   Compile with some optimizations
   
   help     Print this message or the help of the given subcommand(s)
 
@@ -36,6 +37,10 @@ cargo build --release
 ```
 
 # Changelogs
+
+2025-02-02
+  - fix parsing error in some cases
+  - add `optimize` option to subcommand `compile`
 
 2025-02-1
   - change `,` behavior to official c implement

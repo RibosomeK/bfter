@@ -6,35 +6,41 @@ use std::{
     sync::LazyLock,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Op {
-    Inc,
-    Dec,
+    Upd,
+    // Inc,
+    // Dec,
     Acp,
     Out,
-    Fwd,
-    Bwd,
+    Shf,
+    // Fwd,
+    // Bwd,
     Jpf,
     Jpb,
+    Set,
+    // Mov,
+    Mul,
+    Add,
 }
 
 static OP_MAP: LazyLock<HashMap<char, Op>> = LazyLock::new(|| {
     HashMap::from([
-        ('+', Op::Inc),
-        ('-', Op::Dec),
+        ('+', Op::Upd),
+        ('-', Op::Upd),
         (',', Op::Acp),
         ('.', Op::Out),
-        ('>', Op::Fwd),
-        ('<', Op::Bwd),
+        ('>', Op::Shf),
+        ('<', Op::Shf),
         ('[', Op::Jpf),
         (']', Op::Jpb),
     ])
 });
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct Operation {
     operator: Op,
-    step: usize,
+    operand: isize,
 }
 
 #[derive(Debug)]
@@ -50,16 +56,19 @@ impl Default for BfStr {
     }
 }
 
-fn count_step(chars: &[char], to_match: &char) -> usize {
-    let mut count: usize = 0;
+fn count_step(chars: &[char], to_match: &char) -> (usize, usize) {
+    let mut count = 0;
+    let mut empty = 0;
     for c in chars {
         if c == to_match {
             count += 1;
+        } else if !OP_MAP.contains_key(c) {
+            empty += 1;
         } else {
             break;
         }
     }
-    count
+    (count, empty)
 }
 
 impl From<&str> for BfStr {
@@ -72,18 +81,30 @@ impl From<&str> for BfStr {
         while pos < chars.len() {
             let c = chars[pos];
             match c {
-                '+' | '-' | ',' | '.' | '<' | '>' => {
+                '+' | ',' | '.' | '>' => {
+                    let (operand, empty) = count_step(&chars[pos..], &c);
                     let op = Operation {
                         operator: OP_MAP[&c].clone(),
-                        step: count_step(&chars[pos..], &c),
+                        operand: operand as isize,
                     };
-                    pos += op.step;
+                    pos += operand;
+                    pos += empty;
+                    bf_str.ops.push(op);
+                }
+                '-' | '<' => {
+                    let (operand, empty) = count_step(&chars[pos..], &c);
+                    let op = Operation {
+                        operator: OP_MAP[&c].clone(),
+                        operand: -(operand as isize),
+                    };
+                    pos += operand;
+                    pos += empty;
                     bf_str.ops.push(op);
                 }
                 '[' => {
                     let op = Operation {
                         operator: OP_MAP[&c].clone(),
-                        step: 0,
+                        operand: 0,
                     };
                     pos += 1;
                     bf_str.ops.push(op);
@@ -93,11 +114,11 @@ impl From<&str> for BfStr {
                     Some(idx) => {
                         let op = Operation {
                             operator: OP_MAP[&c].clone(),
-                            step: idx + 1,
+                            operand: (idx + 1) as isize,
                         };
                         pos += 1;
                         bf_str.ops.push(op);
-                        bf_str.ops[idx].step = bf_str.ops.len();
+                        bf_str.ops[idx].operand = bf_str.ops.len() as isize;
                     }
                     None => panic!("Unbalance jump!"),
                 },
@@ -123,46 +144,41 @@ impl BfStr {
         while pos < self.ops.len() {
             let op = &self.ops[pos];
             match op.operator {
-                Op::Inc => {
-                    let (ret, _) = tape[prt].overflowing_add(op.step as u8);
-                    tape[prt] = ret;
+                Op::Upd => {
+                    tape[prt] = (tape[prt] as isize + op.operand) as u8;
                     pos += 1;
                 }
-                Op::Dec => {
-                    let (ret, _) = tape[prt].overflowing_sub(op.step as u8);
-                    tape[prt] = ret;
-                    pos += 1;
-                }
-                Op::Fwd => {
-                    prt += op.step;
-                    while prt >= tape.len() {
-                        tape.push(0);
-                    }
-                    pos += 1;
-                }
-                Op::Bwd => {
-                    match prt.checked_sub(op.step) {
-                        Some(ret) => prt = ret,
-                        None => panic!("Tape underflow!"),
+                Op::Shf => {
+                    if op.operand > 0 {
+                        prt += op.operand as usize;
+                        while prt >= tape.len() {
+                            tape.push(0);
+                        }
+                    } else {
+                        let ret = (-op.operand) as usize;
+                        if prt < ret {
+                            panic!("Tape underflow!");
+                        }
+                        prt -= ret;
                     }
                     pos += 1;
                 }
                 Op::Jpf => {
                     if tape[prt] == 0 {
-                        pos = op.step;
+                        pos = op.operand as usize;
                     } else {
                         pos += 1;
                     }
                 }
                 Op::Jpb => {
                     if tape[prt] != 0 {
-                        pos = op.step;
+                        pos = op.operand as usize;
                     } else {
                         pos += 1;
                     }
                 }
                 Op::Out => {
-                    for _ in 0..op.step {
+                    for _ in 0..op.operand {
                         print!("{}", char::from(tape[prt]));
                     }
                     pos += 1;
@@ -173,6 +189,37 @@ impl BfStr {
                     if buf[0] != 0 {
                         tape[prt] = buf[0];
                     }
+                    pos += 1;
+                }
+                Op::Set => {
+                    tape[prt] = op.operand as u8;
+                    pos += 1;
+                }
+                Op::Mul => {
+                    tape[prt] = (op.operand * tape[prt] as isize) as u8;
+                    pos += 1;
+                }
+                // Op::Mov => {
+                //     tape[prt + op.operand] = tape[prt];
+                //     tape[prt] = 0;
+                //     pos += 1;
+                // }
+                Op::Add => {
+                    // add current value to relative operand cell
+                    let new_prt;
+                    if op.operand > 0 {
+                        new_prt = prt + op.operand as usize;
+                        while new_prt >= tape.len() {
+                            tape.push(0);
+                        }
+                    } else {
+                        let ret = (-op.operand) as usize;
+                        if prt < ret {
+                            panic!("Tape underflow!");
+                        }
+                        new_prt = prt - ret;
+                    }
+                    tape[new_prt] += tape[prt];
                     pos += 1;
                 }
             }
@@ -239,6 +286,13 @@ static FILE_HEAD: &str = concat!(
     "        printf(\"%c\", tape_curr(tape));\n",
     "    }\n",
     "}\n",
+    "void tape_add(Tape* tape, size_t delta) {\n",
+    "    tape->items[tape->ptr + delta] += tape_curr(tape);\n",
+    "}\n",
+    "\n",
+    "void tape_multiple(Tape* tape, size_t step) {\n",
+    "    tape_assign(tape, (uint8_t)(tape_curr(tape) * step));\n",
+    "}\n",
     "\n",
     "void tape_init(Tape* tape) {\n",
     "    for (size_t i = 0; i < CAP; ++i) {\n",
@@ -263,19 +317,22 @@ static MAIN_TAIL: &str = concat!(
 );
 
 impl BfStr {
-    pub fn cc(&self, save_path: &PathBuf) {
+    pub fn cc(&self, save_path: &PathBuf, is_optimize: bool) {
         let mut file = File::create(save_path).unwrap();
-
+        let ops: Vec<Operation>;
+        if is_optimize {
+            ops = self.optimize();
+        } else {
+            ops = self.ops.clone();
+        }
         let mut cmds: Vec<String> = Vec::new();
         let mut goto_stack: Vec<(usize, &Operation)> = Vec::new();
-        for (idx, op) in self.ops.iter().enumerate() {
+        for (idx, op) in ops.iter().enumerate() {
             match op.operator {
-                Op::Inc => cmds.push(format!("    tape_update(&tape, {});\n", op.step)),
-                Op::Dec => cmds.push(format!("    tape_update(&tape, -{});\n", op.step)),
-                Op::Fwd => cmds.push(format!("    tape_shift(&tape, {});\n", op.step)),
-                Op::Bwd => cmds.push(format!("    tape_shift(&tape, -{});\n", op.step)),
+                Op::Upd => cmds.push(format!("    tape_update(&tape, {});\n", op.operand)),
+                Op::Shf => cmds.push(format!("    tape_shift(&tape, {});\n", op.operand)),
                 Op::Acp => cmds.push(format!("    tape_in(&tape);\n")),
-                Op::Out => cmds.push(format!("    tape_out(&tape, {});\n", op.step)),
+                Op::Out => cmds.push(format!("    tape_out(&tape, {});\n", op.operand)),
                 Op::Jpf => {
                     cmds.push(String::new());
                     goto_stack.push((idx, op));
@@ -284,18 +341,22 @@ impl BfStr {
                     Some((goto_idx, goto_op)) => {
                         cmds.push(format!(
                             "    tape_jpb(&tape, jpb{});\n    jpf{}:\n",
-                            op.step, goto_op.step
+                            op.operand, goto_op.operand
                         ));
                         cmds[goto_idx].push_str(
                             format!(
                                 "    tape_jpf(&tape, jpf{});\n    jpb{}:\n",
-                                goto_op.step, op.step
+                                goto_op.operand, op.operand
                             )
                             .as_str(),
                         );
                     }
                     None => panic!("Unbalanced jump!"),
                 },
+                Op::Set => cmds.push(format!("    tape_assign(&tape, {});\n", op.operand)),
+                Op::Mul => cmds.push(format!("    tape_multiple(&tape, {});\n", op.operand)),
+                // Op::Mov => cmds.push(format!("    tape_move(&tape, {});\n", op.operand)),
+                Op::Add => cmds.push(format!("    tape_add(&tape, {});\n", op.operand)),
             }
         }
 
@@ -305,5 +366,80 @@ impl BfStr {
             let _ = file.write(cmd.as_bytes());
         }
         let _ = file.write(MAIN_TAIL.as_bytes());
+    }
+}
+
+impl BfStr {
+    fn optimize(&self) -> Vec<Operation> {
+        let mut optimized: Vec<Operation> = Vec::with_capacity(self.ops.len());
+        let mut pos = 0 as usize;
+        while pos < self.ops.len() {
+            let op = &self.ops[pos];
+            match op.operator {
+                /*
+                i know where it jumps to, so i could get the loop sequence
+                then i check the pattern:
+                    if the len of loop sequence is one, and is `-`, that is a reset
+                    if the loop sequence match [(>/<)N (+)M (</>)N -], that is multiple current value with M and plus the value in next N cell,
+                        then move that value to next N cell
+                            to check the pattern inside of the loop, it suppose to have Op::Shf(±N) Op::Upd(M) Op::Bwd(∓N) Op::Upd(-1)
+                            then these instructions along with the jumps, can be replace with: 1) Mul(M) 2) Add(N) 3) Set(0)
+                        additionally, [(>/<)N (-)M (</>)N -] is similar to divide
+                 */
+                Op::Jpf => {
+                    let loop_len = op.operand - &self.ops[op.operand as usize - 1].operand - 1;
+                    if loop_len == 1
+                        && self.ops[pos + 1]
+                            == (Operation {
+                                operator: Op::Upd,
+                                operand: -1,
+                            })
+                    {
+                        optimized.push(Operation {
+                            operator: Op::Set,
+                            operand: 0,
+                        });
+                        pos += 3;
+                    } else if loop_len == 4 {
+                        let loop_op: Vec<Op> = self.ops[pos + 1..pos + 5]
+                            .iter()
+                            .map(|op| op.operator.clone())
+                            .collect();
+                        if loop_op == vec![Op::Shf, Op::Upd, Op::Shf, Op::Upd]
+                            && self.ops[pos + 1].operand == -self.ops[pos + 3].operand
+                            && self.ops[pos + 2].operand > 0
+                            && self.ops[pos + 4].operand == -1
+                        {
+                            optimized.extend([
+                                Operation {
+                                    operator: Op::Mul,
+                                    operand: self.ops[pos + 2].operand,
+                                },
+                                Operation {
+                                    operator: Op::Add,
+                                    operand: self.ops[pos + 1].operand,
+                                },
+                                Operation {
+                                    operator: Op::Set,
+                                    operand: 0,
+                                },
+                            ]);
+                            pos += 6;
+                        } else {
+                            optimized.push(op.clone());
+                            pos += 1;
+                        }
+                    } else {
+                        optimized.push(op.clone());
+                        pos += 1;
+                    }
+                }
+                _ => {
+                    optimized.push(op.clone());
+                    pos += 1;
+                }
+            }
+        }
+        optimized
     }
 }

@@ -20,6 +20,9 @@ enum Commands {
     Compile {
         #[arg(short, long, default_value = "./")]
         out: PathBuf,
+        /// Compile with some optimizations
+        #[arg(short = 'O', long)]
+        optimize: bool,
         /// The path of BrainFuck source file
         #[arg(default_value = "./sample/hello.bf")]
         file: PathBuf,
@@ -33,13 +36,17 @@ fn main() {
             let bf_str = BfStr::from_file(file).unwrap();
             bf_str.interpret();
         }
-        Commands::Compile { out, file } => {
+        Commands::Compile {
+            optimize,
+            out,
+            file,
+        } => {
             let bf_str = BfStr::from_file(file).unwrap();
             if let Some(basename) = file.file_stem() {
                 let mut c_path = PathBuf::from(out);
                 c_path.push(basename);
                 c_path.set_extension("c");
-                bf_str.cc(&c_path);
+                bf_str.cc(&c_path, *optimize);
                 println!("Successfully compiled to {:?}", &c_path);
             }
         }

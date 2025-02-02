@@ -58,6 +58,14 @@ void tape_out(Tape* tape, size_t step) {
     }
 }
 
+void tape_add(Tape* tape, size_t pos) {
+    tape->items[pos] += tape_curr(tape);
+}
+
+void tape_multiple(Tape* tape, size_t step) {
+    tape_assign(tape, (uint8_t)(tape_curr(tape) * step));
+}
+
 void tape_init(Tape* tape) {
     for (size_t i = 0; i < CAP; ++i) {
         da_append(tape, 0);
