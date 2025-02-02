@@ -1,6 +1,6 @@
 # Bfter
 
-a simple [Brain Fuck](https://brainfuck.org/) interpreter in rust. And can also compile to c.
+a simple [Brainfuck](https://brainfuck.org/) interpreter in rust. And can also compile to C with optional optimizations.
 
 # Usage
 
