@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, Read, Write},
+    io::{self, BufRead, Read, Write},
     path::PathBuf,
     sync::LazyLock,
 };
@@ -138,6 +138,10 @@ impl BfStr {
     }
 
     pub fn interpret(&self) {
+        self._interpret(io::stdin(), io::stdout());
+    }
+
+    fn _interpret(&self, mut read: impl Read, mut write: impl Write) {
         let mut tape: Vec<u8> = vec![0; 1024000];
         let mut prt: usize = 0;
         let mut pos: usize = 0;
@@ -179,13 +183,13 @@ impl BfStr {
                 }
                 Op::Out => {
                     for _ in 0..op.operand {
-                        print!("{}", char::from(tape[prt]));
+                        write!(write, "{}", char::from(tape[prt])).unwrap();
                     }
                     pos += 1;
                 }
                 Op::Acp => {
                     let mut buf = [0; 1];
-                    let _ = io::stdin().read_exact(&mut buf);
+                    let _ = read.read_exact(&mut buf);
                     if buf[0] != 0 {
                         tape[prt] = buf[0];
                     }
@@ -441,5 +445,32 @@ impl BfStr {
             }
         }
         optimized
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bf_str::BfStr;
+    use std::{io, path::PathBuf};
+
+    #[test]
+    fn test_interpret() -> io::Result<()> {
+        let bf_str = BfStr::from_file(&PathBuf::from("./sample/hello.bf"))?;
+        let mut ret = Vec::new();
+        bf_str._interpret(io::stdin(), &mut ret);
+        assert_eq!(ret, b"Hello World!\n");
+
+        ret.clear();
+        let bf_str = BfStr::from_file(&PathBuf::from("./sample/392quine.bf"))?;
+        bf_str._interpret(io::stdin(), &mut ret);
+        assert_eq!(ret, b"->++>+++>+>+>+++>>>>>>>>>>>>>>>>>>>>+>+>++>+++>++>>+++>+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>+>+>>+++>>+++>>>>>+++>+>>>>>>>>>++>+++>+++>+>>+++>>>+++>+>++>+++>>>+>+>++>+++>+>+>>+++>>>>>>>+>+>>>+>+>++>+++>+++>+>>+++>>>+++>+>++>+++>++>>+>+>++>+++>+>+>>+++>>>>>+++>+>>>>>++>+++>+++>+>>+++>>>+++>+>+++>+>>+++>>+++>>++[[>>+[>]++>++[<]<-]>+[>]<+<+++[<]<+]>+[>]++++>++[[<++++++++++++++++>-]<+++++++++.<]\x1a");
+
+        ret.clear();
+        let data = b"Hello\x04";
+        let bf_str = BfStr::from_file(&PathBuf::from("./sample/rot13.bf"))?;
+        bf_str._interpret(&data[..], &mut ret);
+        assert_eq!(ret, b"U\nr\ny\ny\nb\n\x04\n");
+
+        Ok(())
     }
 }
