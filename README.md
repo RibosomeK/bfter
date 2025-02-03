@@ -38,6 +38,9 @@ cargo build --release
 
 # Changelogs
 
+2025-02-04
+  - add test for `BfStr::interpret()`
+
 2025-02-02
   - fix parsing error in some cases
   - add `optimize` option to subcommand `compile`
