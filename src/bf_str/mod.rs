@@ -481,6 +481,12 @@ mod tests {
 
     #[test]
     fn test_cc() -> io::Result<()> {
+        _test_cc(false)?;
+        _test_cc(true)?;
+        Ok(())
+    }
+
+    fn _test_cc(is_optimize: bool) -> io::Result<()> {
         let bf_path = [
             (
                 PathBuf::from("./sample/hello.bf"),
@@ -507,7 +513,7 @@ mod tests {
         for (path, input, output) in &bf_path {
             let temp_file = NamedTempFile::new()?;
             let bf_str = BfStr::from_file(path)?;
-            bf_str.cc(temp_file.path(), false);
+            bf_str.cc(temp_file.path(), is_optimize);
 
             let temp_exec = NamedTempFile::new()?;
             let exit_status = Command::new("gcc")
