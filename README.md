@@ -38,6 +38,9 @@ cargo build --release
 
 # Changelogs
 
+2025-02-05
+  - add test for `BfStr::cc()`
+
 2025-02-04
   - add test for `BfStr::interpret()`
 
