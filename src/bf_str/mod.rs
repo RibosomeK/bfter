@@ -1,21 +1,17 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, BufRead, Read, Write},
-    path::PathBuf,
+    io::{self, Read, Write},
+    path::Path,
     sync::LazyLock,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 enum Op {
     Upd,
-    // Inc,
-    // Dec,
     Acp,
     Out,
     Shf,
-    // Fwd,
-    // Bwd,
     Jpf,
     Jpb,
     Set,
@@ -130,7 +126,7 @@ impl From<&str> for BfStr {
 }
 
 impl BfStr {
-    pub fn from_file(path: &PathBuf) -> io::Result<Self> {
+    pub fn from_file(path: &Path) -> io::Result<Self> {
         let mut file = File::open(path)?;
         let mut source = String::new();
         file.read_to_string(&mut source)?;
@@ -321,8 +317,7 @@ static MAIN_TAIL: &str = concat!(
 );
 
 impl BfStr {
-    pub fn cc(&self, save_path: &PathBuf, is_optimize: bool) {
-        let mut file = File::create(save_path).unwrap();
+    fn _cc(&self, mut write: impl Write, is_optimize: bool) {
         let ops: Vec<Operation>;
         if is_optimize {
             ops = self.optimize();
@@ -363,13 +358,17 @@ impl BfStr {
                 Op::Add => cmds.push(format!("    tape_add(&tape, {});\n", op.operand)),
             }
         }
-
-        let _ = file.write(FILE_HEAD.as_bytes());
-        let _ = file.write(MAIN_HEAD.as_bytes());
+        let _ = write!(write, "{}", FILE_HEAD);
+        let _ = write!(write, "{}", MAIN_HEAD);
         for cmd in &cmds {
-            let _ = file.write(cmd.as_bytes());
+            let _ = write!(write, "{}", cmd);
         }
-        let _ = file.write(MAIN_TAIL.as_bytes());
+        let _ = write!(write, "{}", MAIN_TAIL);
+    }
+
+    pub fn cc(&self, save_path: &Path, is_optimize: bool) {
+        let file = File::create(save_path).unwrap();
+        self._cc(file, is_optimize);
     }
 }
 
@@ -451,6 +450,7 @@ impl BfStr {
 #[cfg(test)]
 mod tests {
     use crate::bf_str::BfStr;
+    use std::io::Write;
     use std::{io, path::PathBuf};
 
     #[test]
@@ -470,6 +470,62 @@ mod tests {
         let bf_str = BfStr::from_file(&PathBuf::from("./sample/rot13.bf"))?;
         bf_str._interpret(&data[..], &mut ret);
         assert_eq!(ret, b"U\nr\ny\ny\nb\n\x04\n");
+
+        Ok(())
+    }
+
+    use std::process::{Command, Stdio};
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_cc() -> io::Result<()> {
+        let bf_path = [
+            (
+                PathBuf::from("./sample/hello.bf"),
+                String::new(),
+                String::from("Hello World!\n"),
+            ),
+            (PathBuf::from("./sample/392quine.bf"), String::new(), String::from("->++>+++>+>+>+++>>>>>>>>>>>>>>>>>>>>+>+>++>+++>++>>+++>+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>+>+>>+++>>+++>>>>>+++>+>>>>>>>>>++>+++>+++>+>>+++>>>+++>+>++>+++>>>+>+>++>+++>+>+>>+++>>>>>>>+>+>>>+>+>++>+++>+++>+>>+++>>>+++>+>++>+++>++>>+>+>++>+++>+>+>>+++>>>>>+++>+>>>>>++>+++>+++>+>>+++>>>+++>+>+++>+>>+++>>+++>>++[[>>+[>]++>++[<]<-]>+[>]<+<+++[<]<+]>+[>]++++>++[[<++++++++++++++++>-]<+++++++++.<]\x1a")),
+            (
+                PathBuf::from("./sample/rot13.bf"),
+                String::from("Hello\x04"),
+                String::from("U\nr\ny\ny\nb\n\x04\n"),
+            ),
+            (PathBuf::from("./sample/simplify.bf"), String::new(), String::from("A\nA\nA")),
+        ];
+
+        for (path, input, output) in &bf_path {
+            let temp_file = NamedTempFile::new()?;
+            let bf_str = BfStr::from_file(path)?;
+            bf_str.cc(temp_file.path(), false);
+
+            let temp_exec = NamedTempFile::new()?;
+            let exit_status = Command::new("gcc")
+                .args([
+                    "-x",
+                    "c",
+                    "-o",
+                    temp_exec.path().to_str().unwrap(),
+                    temp_file.path().to_str().unwrap(),
+                ])
+                .status()?;
+            assert!(exit_status.success());
+
+            let temp_exec = temp_exec.into_temp_path();
+            let mut child = Command::new(temp_exec.to_str().unwrap())
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()?;
+            if !input.is_empty() {
+                let mut stdin = child.stdin.take().unwrap();
+                stdin.write_all(input.as_bytes())?;
+                drop(stdin);
+            }
+            assert_eq!(
+                child.wait_with_output().unwrap().stdout,
+                output.clone().into_bytes()
+            );
+        }
 
         Ok(())
     }
