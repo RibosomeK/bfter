@@ -39,6 +39,10 @@ cargo build --release
 # Changelogs
 
 2025-02-05
+  - add parameters in `Cargo.toml` to minimize release size
+  - add pre-built binary for linux-x64 and windows-x64 on Github
+
+2025-02-05
   - add test for `BfStr::cc()`
 
 2025-02-04
@@ -58,3 +62,7 @@ cargo build --release
 
 2025-01-27
 - first init
+
+# Credit
+
+[Minimizing Rust Binary Size](https://github.com/johnthagen/min-sized-rust)

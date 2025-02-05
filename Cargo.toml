@@ -8,3 +8,9 @@ clap = { version = "4.5.27", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "*"
+
+[profile.release]
+strip = true        # Automatically strip symbols from the binary.
+opt-level = "z"     # Optimize for size.
+lto = true          # LTO instructs the linker to optimize at the link stage.
+codegen-units = 1   # Reduce parallel code generation units to increase optimization
