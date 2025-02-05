@@ -450,8 +450,7 @@ impl BfStr {
 #[cfg(test)]
 mod tests {
     use crate::bf_str::BfStr;
-    use std::io;
-    use std::io::Write;
+    use std::io::{self, Write};
     use std::path::Path;
 
     static QUINE: &str = concat!(
