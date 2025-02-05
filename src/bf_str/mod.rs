@@ -450,8 +450,9 @@ impl BfStr {
 #[cfg(test)]
 mod tests {
     use crate::bf_str::BfStr;
+    use std::io;
     use std::io::Write;
-    use std::{io, path::PathBuf};
+    use std::path::Path;
 
     static QUINE: &str = concat!(
         "->++>+++>+>+>+++>>>>>>>>>>>>>>>>>>>>+>+>++>+++>++>",
@@ -466,21 +467,26 @@ mod tests {
 
     #[test]
     fn test_interpret() -> io::Result<()> {
-        let bf_str = BfStr::from_file(&PathBuf::from("./sample/hello.bf"))?;
-        let mut ret = Vec::new();
-        bf_str._interpret(io::stdin(), &mut ret);
-        assert_eq!(ret, b"Hello World!\n");
+        let test_case = [
+            (Path::new("./sample/hello.bf"), "", "Hello World!\n"),
+            (Path::new("./sample/392quine.bf"), "", QUINE),
+            (
+                Path::new("./sample/rot13.bf"),
+                "Hello\x04",
+                "U\nr\ny\ny\nb\n\x04\n",
+            ),
+        ];
 
-        ret.clear();
-        let bf_str = BfStr::from_file(&PathBuf::from("./sample/392quine.bf"))?;
-        bf_str._interpret(io::stdin(), &mut ret);
-        assert_eq!(ret, QUINE.as_bytes());
-
-        ret.clear();
-        let data = b"Hello\x04";
-        let bf_str = BfStr::from_file(&PathBuf::from("./sample/rot13.bf"))?;
-        bf_str._interpret(&data[..], &mut ret);
-        assert_eq!(ret, b"U\nr\ny\ny\nb\n\x04\n");
+        for (path, input, output) in test_case {
+            let bf_str = BfStr::from_file(path)?;
+            let mut ret = Vec::new();
+            if input.is_empty() {
+                bf_str._interpret(io::stdin(), &mut ret);
+            } else {
+                bf_str._interpret(input.as_bytes(), &mut ret);
+            }
+            assert_eq!(ret, output.as_bytes());
+        }
 
         Ok(())
     }
@@ -496,30 +502,18 @@ mod tests {
     }
 
     fn _test_cc(is_optimize: bool) -> io::Result<()> {
-        let bf_path = [
+        let test_case = [
+            (Path::new("./sample/hello.bf"), "", "Hello World!\n"),
+            (Path::new("./sample/392quine.bf"), "", QUINE),
             (
-                PathBuf::from("./sample/hello.bf"),
-                String::new(),
-                String::from("Hello World!\n"),
+                Path::new("./sample/rot13.bf"),
+                "Hello\x04",
+                "U\nr\ny\ny\nb\n\x04\n",
             ),
-            (
-                PathBuf::from("./sample/392quine.bf"),
-                String::new(),
-                String::from(QUINE),
-            ),
-            (
-                PathBuf::from("./sample/rot13.bf"),
-                String::from("Hello\x04"),
-                String::from("U\nr\ny\ny\nb\n\x04\n"),
-            ),
-            (
-                PathBuf::from("./sample/simplify.bf"),
-                String::new(),
-                String::from("A\nA\nA"),
-            ),
+            (Path::new("./sample/simplify.bf"), "", "A\nA\nA"),
         ];
 
-        for (path, input, output) in &bf_path {
+        for (path, input, output) in &test_case {
             let temp_file = NamedTempFile::new()?;
             let bf_str = BfStr::from_file(path)?;
             bf_str.cc(temp_file.path(), is_optimize);
@@ -546,10 +540,7 @@ mod tests {
                 stdin.write_all(input.as_bytes())?;
                 drop(stdin);
             }
-            assert_eq!(
-                child.wait_with_output().unwrap().stdout,
-                output.clone().into_bytes()
-            );
+            assert_eq!(child.wait_with_output().unwrap().stdout, output.as_bytes());
         }
 
         Ok(())
